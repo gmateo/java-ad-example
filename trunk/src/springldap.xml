@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN 2.0//EN" "http://www.springframework.org/dtd/spring-beans-2.0.dtd">
+<beans>
+    <bean id="contextSource"
+          class="org.springframework.ldap.core.support.LdapContextSource">
+        <!--<property name="url" value="ldap://192.168.1.102:389"/>-->
+        <property name="url" value="ldaps://192.168.1.102:636"/>
+        <property name="base" value="CN=Users,dc=agileworks,dc=com"/>
+        <property name="userDn" value="CN=Administrador,CN=Users,DC=agileworks,DC=com"/>
+        <property name="password" value="$awpassword191"/>
+        <property name="referral" value="follow"/>
+        <property name="baseEnvironmentProperties">
+            <map>
+                <entry key="java.naming.security.authentication" value="simple"/>
+            </map>
+        </property>
+    </bean>
+    <bean id="ldapTemplate" class="org.springframework.ldap.core.LdapTemplate">
+        <constructor-arg ref="contextSource"/>
+    </bean>
+    <bean id="ldapUser" class="com.aw.ad.UserDaoImpl">
+        <property name="ldapTemplate" ref="ldapTemplate"/>
+    </bean>
+</beans>
