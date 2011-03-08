@@ -3,15 +3,14 @@ package com.aw.ad;
 import com.aw.ad.exception.DuplicateUserException;
 import com.aw.ad.exception.LdapException;
 import com.aw.ad.exception.PasswordStrengthException;
+import com.aw.ad.util.ActiveDirectoryUtils;
 import org.springframework.ldap.NameAlreadyBoundException;
 import org.springframework.ldap.OperationNotSupportedException;
-import org.springframework.ldap.core.DirContextAdapter;
-import org.springframework.ldap.core.DirContextOperations;
-import org.springframework.ldap.core.DistinguishedName;
-import org.springframework.ldap.core.LdapTemplate;
+import org.springframework.ldap.core.*;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
 
+import javax.naming.NamingException;
 import javax.naming.directory.*;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
@@ -24,7 +23,10 @@ import java.util.List;
  */
 public class UserDaoImpl implements UserDao {
     // Attribute names
+
     private static final String USER_ACCOUNT_CONTROL_ATTR_NAME = "userAccountControl";
+    private static final String ACCOUNT_EXPIRES_ATTR_NAME = "accountExpires";
+    private static final String PWD_LAST_SET_ATTR_NAME = "pwdLastSet";
     private static final String PASSWORD_ATTR_NAME = "unicodepwd";
     private static final String DISTINGUISHED_NAME_ATTR_NAME = "distinguishedname";
     private static final String MEMBER_ATTR_NAME = "member";
@@ -35,11 +37,36 @@ public class UserDaoImpl implements UserDao {
     private static final int USER_CONTROL_NORMAL_USER = 512;
 
     private LdapTemplate ldapTemplate;
+    ActiveDirectoryUtils activeDirectoryUtils = new ActiveDirectoryUtils();
 
     public List<User> getAllUsers() {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         return ldapTemplate.search("", "(objectclass=person)", controls, new UserContextMapper());
+    }
+
+    public UserDetails getUserDetails(String userName) {
+        DirContextAdapter dirContext = (DirContextAdapter) ldapTemplate.lookup(getDnFrom(userName));
+        String dnUserFull = dirContext.getStringAttribute(DISTINGUISHED_NAME_ATTR_NAME);
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        String userAccountControlStr = dirContext.getStringAttribute(USER_ACCOUNT_CONTROL_ATTR_NAME);
+        String pwdLastSet = dirContext.getStringAttribute(PWD_LAST_SET_ATTR_NAME);
+        String accountExpires = dirContext.getStringAttribute(ACCOUNT_EXPIRES_ATTR_NAME);
+        String maxPwdAge = "-36288000000000";
+        UserDetails userDetails = activeDirectoryUtils.getUserDetailsFrom(userName, dnUserFull, userAccountControlStr, pwdLastSet, accountExpires, maxPwdAge);
+        return userDetails;
+    }
+
+
+    public User getUser(String userName) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        AndFilter filter = new AndFilter();
+        filter.and(new EqualsFilter("objectclass", "person")).and(new EqualsFilter("cn", userName));
+        List<User> users = ldapTemplate.search("", filter.toString(), controls, new UserContextMapper());
+        User user = users.get(0);
+        return user;
     }
 
     public boolean login(String userName, String password) {
@@ -142,4 +169,16 @@ public class UserDaoImpl implements UserDao {
     public void setLdapTemplate(LdapTemplate ldapTemplate) {
         this.ldapTemplate = ldapTemplate;
     }
+
+
+    public DirContextOperations retrieveEntry(final String dn, final String[] attributesToRetrieve) {
+        return (DirContextOperations) ldapTemplate.executeReadOnly(new ContextExecutor() {
+            public Object executeWithContext(DirContext ctx) throws NamingException {
+                Attributes attrs = ctx.getAttributes(dn, attributesToRetrieve);
+                return new DirContextAdapter(attrs, new DistinguishedName(dn),
+                        new DistinguishedName(ctx.getNameInNamespace()));
+            }
+        });
+    }
+
 }
