@@ -22,4 +22,7 @@ public interface UserDao {
 
     public void addUserToGroup(String userName, String group);
 
+    public User getUser(String userName);
+
+    UserDetails getUserDetails(String userName);
 }
